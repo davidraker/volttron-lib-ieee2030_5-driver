@@ -1,0 +1,22 @@
+Volttron Point Name,Path,Writable,Multiplier,Scaling,Units,Starting Value,Notes
+DERCapability_type,DERCapability.type,TRUE,,,,83,DER type (83: PV system)
+DERCapability_rtgMaxW,DERCapability.rtgMaxW,TRUE,0,1,W,10000,Nameplate active power
+DERCapability_modesSupported,DERCapability.modesSupported,TRUE,,,,0x0F,Control modes supported (hex bitmap)
+DERSettings_setMaxW,DERSettings.setMaxW,TRUE,0,1,W,,Max active power setting
+DERSettings_setGradW,DERSettings.setGradW,TRUE,,,% x100/s,100,Ramp rate (required)
+DERStatus_operationalModeStatus,DERStatus.operationalModeStatus,TRUE,,,,,0 off 1 operational 2 test
+DERStatus_connectStatus,DERStatus.connectStatus,TRUE,,,,,Hex bitmap (genConnectStatus)
+DERStatus_stateOfChargeStatus,DERStatus.stateOfChargeStatus,TRUE,,,% x100,,
+MirrorMeterReading_W,MirrorMeterReading.W,TRUE,,,W,,Active power reading
+MirrorMeterReading_var,MirrorMeterReading.var,TRUE,,,var,,Reactive power reading
+MirrorMeterReading_V_PhaseA,MirrorMeterReading.V.PhaseA,TRUE,,,V,,
+MirrorMeterReading_Hz,MirrorMeterReading.Hz,TRUE,,,Hz,,
+DERControl_opModConnect,DERControl.opModConnect,FALSE,,,,,Control in force
+DERControl_opModMaxLimW,DERControl.opModMaxLimW,FALSE,,,% x100,,
+DERControl_opModFixedPFInjectW_displacement,DERControl.opModFixedPFInjectW.displacement,FALSE,,,,,
+DERControl_opModTargetW,DERControl.opModTargetW,FALSE,,,W,,
+DERControl_mRID,DERControl.mRID,FALSE,,,,,Active event
+DefaultDERControl_opModMaxLimW,DefaultDERControl.opModMaxLimW,FALSE,,,% x100,,
+DERCurve_opModVoltVar_CurveData,DERCurve.opModVoltVar.CurveData,FALSE,,,,,List of {xvalue yvalue}
+DERControlList,DERControlList,FALSE,,,,,Every scheduled and active event
+DERProgram_primacy,DERProgram.primacy,FALSE,,,,,Program in charge
