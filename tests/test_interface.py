@@ -139,7 +139,8 @@ class TestReads:
         assert results == {TOPIC('DERControl/opModMaxLimW'): 5000, TOPIC('DERSettings/setMaxW'): 6000, TOPIC('DERControlList'): []}
         assert errors == {TOPIC('bogus'): 'Point not configured on device.'}
         [payload] = ppm.payloads('READ_RESOURCES')
-        assert payload == {**IDENTITY, 'topics': topics[:3], 'refresh': False}
+        assert payload == {'topics': topics[:3], 'refresh': False}
+        assert ppm.messages[-1].remote_id == interface.remote_id                   # the header names the server
 
     def test_get_point_refreshes_controls_but_not_upward_rows(self, interface, ppm):
         ppm.queue(serialized({TOPIC('DERControl/opModMaxLimW'): 4000}), serialized({TOPIC('DERSettings/setMaxW'): 1}))
@@ -188,7 +189,7 @@ class TestWrites:
         assert errors == {TOPIC('DERControl/opModMaxLimW'): 'Trying to write to a point configured read only.',
                           TOPIC('bogus'): 'Point not configured on device.'}
         [payload] = ppm.payloads('WRITE_RESOURCES')
-        assert payload == {**IDENTITY, 'values': {TOPIC('DERSettings/setMaxW'): 5000, TOPIC('DERSettings/setMaxVar'): 2500.5,
+        assert payload == {'values': {TOPIC('DERSettings/setMaxW'): 5000, TOPIC('DERSettings/setMaxVar'): 2500.5,
                                                    TOPIC('DERStatus/connectStatus'): '0x01', TOPIC('MirrorMeterReading/W'): 4321.6}}
 
     def test_set_point_errors(self, interface, ppm):
