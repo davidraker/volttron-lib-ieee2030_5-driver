@@ -136,7 +136,7 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
 
     def read_payload(self, topics: list[str], refresh: bool = False, **kwargs) -> dict:
         """``refresh`` makes the proxy fetch the server's controls before answering."""
-        return {**self.config.identity_fields(), 'topics': list(topics), 'refresh': bool(refresh)}
+        return {'topics': list(topics), 'refresh': bool(refresh)}
 
     def get_point(self, topic: str, **kwargs):
         register = cast(Ieee2030_5Register | None, self.point_map.get(topic))
