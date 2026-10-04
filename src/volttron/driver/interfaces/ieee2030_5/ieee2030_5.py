@@ -21,7 +21,8 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-"""IEEE 2030.5 (Smart Energy Profile 2.0, CSIP) client interface for the VOLTTRON Platform Driver.
+"""IEEE 2030.5 (Smart Energy Profile 2.0, CSIP) interface for the VOLTTRON Platform Driver: a DER client reaching a
+server (``driver_role: client``, the default) or a server served to DER clients (``driver_role: server``).
 
 The protocol runs in an IEEE 2030.5 Protocol Proxy process (``protocol_proxy.protocol.ieee2030_5``); this interface
 registers the server, the device certificate and the device's resource attributes with that proxy, reads the controls
@@ -33,6 +34,12 @@ The remote "device" is the 2030.5 server, so the polarity of the registry is inv
 rows are what this client reports upward (DERStatus, DERSettings, DERCapability, DERAvailability, DeviceInformation,
 MirrorMeterReading) and read-only rows are the controls received (DERControl, DefaultDERControl, DERCurve,
 DERControlList, DERProgram). Paths follow the interoperability service's ``2030.5`` convention.
+
+In the server role the directions are mirrored: the platform writes the controls the server serves (DefaultDERControl,
+immediate DERControl events, the DERControlList schedule, DERCurves, the DERProgram) and reflects them into the
+equipment tree at once, while the DER client's reports (DERStatus, DERSettings, DERCapability, DERAvailability,
+DeviceInformation, MirrorMeterReading) and its DERControlResponses arrive as pushes. Served rows default to
+``data_source: server``, so they are never polled.
 """
 from gevent import monkey
 monkey.patch_socket()
@@ -45,7 +52,9 @@ from typing import Any, cast
 from volttron.driver.base.interfaces import BaseInterface, BaseRegister, BasicRevert
 from volttron.driver.base.proxy_interface import ProxyBackedInterface
 
-from .config import Ieee2030_5PointConfig, Ieee2030_5RemoteConfig
+from volttron.driver.base.config import RemoteConfig
+
+from .config import DOWNWARD_RESOURCES, DriverRole, Ieee2030_5PointConfig, Ieee2030_5RemoteConfig, ROLE_ALIASES
 
 _log = logging.getLogger(__name__)
 
@@ -68,6 +77,7 @@ class Ieee2030_5Register(BaseRegister):
         self.scaling = point.scaling
         self.starting_value = point.starting_value
         self.reading = point.reading_fields()
+        self.remote_writable = point.resolved_remote_writable     # served rows only
         leaf = self.path.split('.')[-1]
         if leaf in LIST_ATTRIBUTES:
             self.python_type: type = list
@@ -76,14 +86,16 @@ class Ieee2030_5Register(BaseRegister):
         else:
             self.python_type = float
 
-    def point_fields(self, topic: str) -> dict:
-        """This register's entry in the REGISTER_SERVER point table."""
+    def point_fields(self, topic: str, served: bool = False) -> dict:
+        """This register's entry in the registration point table; a served row adds what serving it needs."""
         fields = {'topic': topic, 'path': self.path, 'writable': not self.read_only, 'multiplier': self.multiplier,
                   'scaling': self.scaling}
         if self.starting_value not in (None, ''):
             fields['starting_value'] = self.starting_value
         if self.reading is not None:
             fields['reading'] = self.reading
+        if served:
+            fields['remote_writable'] = self.remote_writable
         return fields
 
     def __repr__(self) -> str:
@@ -96,7 +108,7 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
     REGISTER_CONFIG_CLASS = Ieee2030_5PointConfig
     INTERFACE_CONFIG_CLASS = Ieee2030_5RemoteConfig
     PROXY_NAME, PROXY_LABEL = 'ieee2030_5', 'IEEE 2030.5 Proxy'
-    REGISTER_METHOD, READ_METHOD, WRITE_METHOD = 'REGISTER_SERVER', 'READ_RESOURCES', 'WRITE_RESOURCES'
+    REGISTER_METHOD, READ_METHOD, WRITE_METHOD = 'REGISTER_REMOTE', 'READ_RESOURCES', 'WRITE_RESOURCES'
     PUSH_METHOD = 'RECEIVE_CONTROLS'
     REQUEST_ERROR_KEY = 'server'
 
@@ -107,6 +119,20 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
         self.init_proxy()
 
     # ---- registers --------------------------------------------------------------------------------------------
+    def prepare_registry_config(self, registry_config: list[dict], remote_config: RemoteConfig | None = None) -> list[dict]:
+        """In the server role, rows default to the ``server`` data source (and so to the mirrored direction)."""
+        role = getattr(remote_config, 'driver_role', None) if remote_config is not None else self.config.driver_role
+        role = getattr(role, 'value', role)
+        if ROLE_ALIASES.get(role, role) != DriverRole.server.value:
+            return registry_config
+        prepared = []
+        for row in registry_config:
+            row = dict(row)
+            if all(row.get(key) in (None, '') for key in ('data_source', 'Data Source')):
+                row['data_source'] = 'server'
+            prepared.append(row)
+        return prepared
+
     def create_register(self, register_definition: Ieee2030_5PointConfig) -> Ieee2030_5Register:
         return Ieee2030_5Register(register_definition)
 
@@ -121,18 +147,42 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
                              'revert value; using the default revert method.')
 
     # ---- the proxy exchange, in 2030.5 terms --------------------------------------------------------------------
+    @property
+    def is_server(self) -> bool:
+        return self.config.is_server
+
     def finalize_setup(self, initial_setup: bool = False):
-        if self.config.subscribe and not self.config.notify_host:
+        if not self.is_server and self.config.subscribe and not self.config.notify_host:
             _log.info(f'{self.config.server_url}: subscribe is on but no notify_host is configured; the proxy will poll.')
         super().finalize_setup(initial_setup)
 
+    def identity_fields(self) -> dict:
+        return self.config.identity_fields()
+
+    def point_fields(self, topic: str, register: BaseRegister) -> dict:
+        return cast(Ieee2030_5Register, register).point_fields(topic, served=self.is_server)
+
     def registration_payload(self) -> dict:
-        return {**self.config.server_fields(),
-                'points': [register.point_fields(topic) for topic, register in self.point_map.items()]}
+        payload = {**self.config.server_fields(),
+                   'points': [self.point_fields(topic, register) for topic, register in self.point_map.items()]}
+        if self.is_server:
+            payload['values'] = self.tree_values()         # seeds a served server that has no state to restore
+        return payload
 
     def after_registration(self, result: dict, initial_setup: bool):
-        _log.info(f"2030.5 server {self.config.server_url} registered with the proxy as {result.get('client')} with "
-                  f"{result.get('points')} points; LFDI {result.get('lfdi')}, SFDI {result.get('sfdi')}.")
+        if self.is_server:
+            _log.info(f"2030.5 server served on {self.config.bind_host}:{result.get('port', self.config.port)} by the proxy as"
+                      f" {result.get('server')} with {result.get('points')} points.")
+        else:
+            _log.info(f"2030.5 server {self.config.server_url} registered with the proxy as {result.get('client')} with "
+                      f"{result.get('points')} points; LFDI {result.get('lfdi')}, SFDI {result.get('sfdi')}.")
+
+    def interpret_write(self, items: list[tuple[str, Any]], result: Any, request_errors: Any) -> tuple[dict, dict]:
+        results, errors = super().interpret_write(items, result, request_errors)
+        if self.is_server and results:
+            # The served controls changed: reflect them into the equipment tree and publish at once.
+            self.driver_agent.publish_push(dict(results))
+        return results, errors
 
     def read_payload(self, topics: list[str], refresh: bool = False, **kwargs) -> dict:
         """``refresh`` makes the proxy fetch the server's controls before answering."""
@@ -140,7 +190,7 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
 
     def get_point(self, topic: str, **kwargs):
         register = cast(Ieee2030_5Register | None, self.point_map.get(topic))
-        kwargs.setdefault('refresh', register is not None and register.read_only)
+        kwargs.setdefault('refresh', not self.is_server and register is not None and register.read_only)
         return super().get_point(topic, **kwargs)
 
     def coerce(self, register: BaseRegister, value: Any) -> Any:
@@ -171,6 +221,8 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
 
     @classmethod
     def unique_remote_id(cls, config_name: str, config) -> tuple:
-        """Identifies the server session: one DriverAgent per (server, device certificate)."""
+        """Identifies the remote: one DriverAgent per (server, device certificate) reached, or per listener served."""
         cfg = cls.INTERFACE_CONFIG_CLASS(**config.model_dump())
-        return 'ieee2030_5', cfg.server_url, cfg.lfdi or cfg.cert_path
+        if cfg.is_server:
+            return 'ieee2030_5', 'server', cfg.bind_host, cfg.port
+        return 'ieee2030_5', 'client', cfg.server_url, cfg.lfdi or cfg.cert_path

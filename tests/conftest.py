@@ -19,7 +19,7 @@ def ppm():
 
 @pytest.fixture
 def driver_agent():
-    return mock.Mock()
+    return mock.Mock(equipment_model=None)
 
 
 REMOTE = {'driver_type': 'ieee2030_5', 'server_url': 'https://sep2.test:8443', 'cert_path': '/certs/dev.pem',
@@ -58,4 +58,4 @@ def interface(make_interface):
 
 
 TOPIC = 'campus/building/der/{}'.format
-IDENTITY = {'server_url': 'https://sep2.test:8443', 'lfdi': None, 'cert_path': '/certs/dev.pem'}
+IDENTITY = {'role': 'client', 'server_url': 'https://sep2.test:8443', 'lfdi': None, 'cert_path': '/certs/dev.pem'}
