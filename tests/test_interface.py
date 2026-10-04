@@ -214,14 +214,14 @@ class TestWrites:
 
 
 class TestPush:
-    def test_receive_controls_publishes_by_topic(self, interface, driver_agent):
+    def test_receive_push_publishes_by_topic(self, interface, driver_agent):
         values = {TOPIC('DERControl/opModMaxLimW'): 5000, TOPIC('DERControlList'): [{'mRID': 'EE'}]}
-        interface.receive_controls.__wrapped__(interface, None, serialized(values))
+        interface.receive_push.__wrapped__(interface, None, serialized(values))
         driver_agent.publish_push.assert_called_once_with(values)
 
-    def test_receive_controls_logs_errors_and_ignores_garbage(self, interface, driver_agent, caplog):
+    def test_receive_push_logs_errors_and_ignores_garbage(self, interface, driver_agent, caplog):
         with caplog.at_level(logging.WARNING):
-            interface.receive_controls.__wrapped__(interface, None, serialized({}, {'server': 'lost'}))
-            interface.receive_controls.__wrapped__(interface, None, b'not json')
+            interface.receive_push.__wrapped__(interface, None, serialized({}, {'server': 'lost'}))
+            interface.receive_push.__wrapped__(interface, None, b'not json')
         assert 'lost' in caplog.text and 'Undecodable' in caplog.text
         driver_agent.publish_push.assert_not_called()
