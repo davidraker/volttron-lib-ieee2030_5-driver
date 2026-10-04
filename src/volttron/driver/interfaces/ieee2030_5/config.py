@@ -21,15 +21,27 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-"""Configuration models for the IEEE 2030.5 driver interface: one registry row and one server.
+"""Configuration models for the IEEE 2030.5 driver interface: one registry row and one remote, which is either a
+server this driver reaches as a DER client (``driver_role: client``, the default) or a server this driver serves to DER
+clients (``driver_role: server``).
 
 Kept free of protocol_proxy imports so configuration tooling can validate registries without the proxy installed.
 """
+from enum import Enum
 from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 
-from volttron.driver.base.config import PointConfig, RemoteConfig
+from volttron.driver.base.config import DataSource, PointConfig, RemoteConfig
+
+
+class DriverRole(str, Enum):
+    """Which side of 2030.5 this remote is. ``master``/``outstation`` are accepted for the two as well."""
+    client = 'client'
+    server = 'server'
+
+
+ROLE_ALIASES = {'master': 'client', 'outstation': 'server'}
 
 #: Resources this client sends to the server (writable rows) and the ones it receives (read-only rows).
 UPWARD_RESOURCES = ('DERCapability', 'DERSettings', 'DERStatus', 'DERAvailability', 'DeviceInformation', 'MirrorMeterReading')
@@ -64,7 +76,9 @@ class Ieee2030_5PointConfig(PointConfig):
     """One registry row: a 2030.5 attribute of the device's resources, in the interoperability convention.
 
     Column headers as the discovery tooling writes them (and the legacy agent's ``Parameter Type``) are accepted
-    alongside snake_case. Rows under the upward resources are writable by default; rows under the controls are not.
+    alongside snake_case. In the client role rows under the upward resources are writable by default and rows under the
+    controls are not; a served row (``data_source: server``) is the mirror image: the platform writes the controls and
+    the DER client reports the upward resources (``remote_writable``).
     """
     path: str = Field(validation_alias=AliasChoices('path', 'Path', 'Parameter Type', 'parameter_type', 'sep2_path'))
     # Power of ten the wire value of a quantity is expressed in ({value, multiplier}); 0 sends the value as is.
@@ -100,7 +114,9 @@ class Ieee2030_5PointConfig(PointConfig):
                     del data[key]
             raw_path = next((data[k] for k in ('path', 'Path', 'Parameter Type', 'parameter_type', 'sep2_path') if k in data), None)
             if raw_path is not None and not any(k in data for k in ('writable', 'Writable')):
-                data['writable'] = normalize_path(raw_path).split('.')[0] in UPWARD_RESOURCES
+                source = str(next((data[k] for k in ('data_source', 'Data Source') if k in data), '')).strip().lower()
+                resource = normalize_path(raw_path).split('.')[0]
+                data['writable'] = resource in DOWNWARD_RESOURCES if source == 'server' else resource in UPWARD_RESOURCES
         return data
 
     @field_validator('path', mode='before')
@@ -113,7 +129,13 @@ class Ieee2030_5PointConfig(PointConfig):
         parts = self.path.split('.')
         resource = parts[0]
         name = self.volttron_point_name
-        if resource in UPWARD_RESOURCES:
+        if self.is_served:
+            if resource in UPWARD_RESOURCES and self.writable:
+                raise ValueError(f'Point {name}: {resource} is reported by the DER client and cannot be writable here.')
+            if resource not in UPWARD_RESOURCES and resource not in DOWNWARD_RESOURCES:
+                raise ValueError(f'Point {name}: {resource} is not a 2030.5 resource this driver handles '
+                                 f'({", ".join(UPWARD_RESOURCES + DOWNWARD_RESOURCES)}).')
+        elif resource in UPWARD_RESOURCES:
             if not self.writable:
                 raise ValueError(f'Point {name}: {resource} is sent to the server; the row must be writable.')
         elif resource in DOWNWARD_RESOURCES:
@@ -146,6 +168,16 @@ class Ieee2030_5PointConfig(PointConfig):
         return self.path.split('.')[0]
 
     @property
+    def is_served(self) -> bool:
+        """A served point (``data_source: server``) of a server this driver serves."""
+        return self.data_source is DataSource.SERVER
+
+    @property
+    def resolved_remote_writable(self) -> bool:
+        """Whether the DER client writes this served point: as configured, else when it is an upward resource."""
+        return self.remote_writable if self.remote_writable is not None else self.resource in UPWARD_RESOURCES
+
+    @property
     def is_reading(self) -> bool:
         return self.resource == 'MirrorMeterReading'
 
@@ -161,9 +193,27 @@ class Ieee2030_5PointConfig(PointConfig):
 
 
 class Ieee2030_5RemoteConfig(RemoteConfig):
-    """One 2030.5 server, and the client certificate that identifies this device to it."""
-    server_url: str = Field(validation_alias=AliasChoices('server_url', 'url', 'device_address', 'server'))
+    """One remote: the 2030.5 server to reach with the client certificate that identifies this device to it (role
+    ``client``), or the server to serve with its server certificate (role ``server``)."""
+    driver_role: DriverRole = DriverRole.client
+    # Client role: the server to reach. Required in that role.
+    server_url: str | None = Field(default=None, validation_alias=AliasChoices('server_url', 'url', 'device_address', 'server'))
     dcap_path: str = '/dcap'
+    # Server role: the listener, and the DER client whose data the registry describes.
+    bind_host: str = Field(default='0.0.0.0', validation_alias=AliasChoices('bind_host', 'listen_host'))
+    port: int = Field(default=7443, ge=0, validation_alias=AliasChoices('port', 'listen_port'))
+    tls: bool = True
+    client_auth: bool = True
+    client_lfdi: str | None = None
+    client_pin: int | None = None
+    register_unknown_clients: bool = True
+    # pollRate advertised to clients, the served program's primacy, and how long a DERControl.* write stays in force.
+    poll_rate: int = Field(default=60, ge=1)
+    primacy: int = Field(default=1, ge=0)
+    immediate_control_duration: int = Field(default=3600, ge=1)
+    # Directory where the proxy keeps the served state (registrations, subscriptions, controls); None keeps it in memory.
+    state_dir: str | None = None
+    notify_tls_verify: bool = False
     cert_path: str | None = Field(default=None, validation_alias=AliasChoices('cert_path', 'certfile', 'cert'))
     key_path: str | None = Field(default=None, validation_alias=AliasChoices('key_path', 'keyfile', 'key'))
     ca_path: str | None = Field(default=None, validation_alias=AliasChoices('ca_path', 'cafile', 'ca'))
@@ -211,7 +261,7 @@ class Ieee2030_5RemoteConfig(RemoteConfig):
     def _cipher_list(cls, v):
         return [c for c in v.replace(',', ':').split(':') if c] if isinstance(v, str) else v
 
-    @field_validator('lfdi', mode='before')
+    @field_validator('lfdi', 'client_lfdi', mode='before')
     @classmethod
     def _lfdi(cls, v):
         if v in (None, ''):
@@ -221,14 +271,29 @@ class Ieee2030_5RemoteConfig(RemoteConfig):
             raise ValueError('an LFDI is 40 hex digits')
         return text
 
+    @field_validator('driver_role', mode='before')
+    @classmethod
+    def _role(cls, v):
+        if isinstance(v, str):
+            v = v.lower().strip() or 'client'
+            return ROLE_ALIASES.get(v, v)
+        return DriverRole.client if v is None else v
+
     @model_validator(mode='after')
     def _identity_present(self):
+        if self.is_server:
+            if self.tls and (self.cert_path is None or self.key_path is None):
+                raise ValueError('A served 2030.5 server needs cert_path and key_path (its server certificate), or tls false.')
+            return self
+        if not self.server_url:
+            raise ValueError('A 2030.5 client needs the server_url of the server to reach.')
         if self.lfdi is None and self.cert_path is None:
             raise ValueError('Either cert_path (the device certificate) or lfdi is required.')
-        if self.subscribe and not self.notify_host:
-            # Not an error: subscriptions are simply not attempted. The interface logs it.
-            pass
         return self
+
+    @property
+    def is_server(self) -> bool:
+        return self.driver_role is DriverRole.server
 
     @property
     def resolved_reply_timeout(self) -> float:
@@ -239,11 +304,21 @@ class Ieee2030_5RemoteConfig(RemoteConfig):
         return ('ieee2030_5',) if self.proxy_group is None else ('ieee2030_5', self.proxy_group)
 
     def identity_fields(self) -> dict:
-        """The identity sent with every message to the proxy."""
-        return {'server_url': self.server_url, 'lfdi': self.lfdi, 'cert_path': self.cert_path}
+        """What identifies the remote to the proxy: the server reached and our certificate, or the listener served."""
+        if self.is_server:
+            return {'role': 'server', 'bind_host': self.bind_host, 'port': self.port}
+        return {'role': 'client', 'server_url': self.server_url, 'lfdi': self.lfdi, 'cert_path': self.cert_path}
 
     def server_fields(self) -> dict:
-        """Everything REGISTER_SERVER needs besides the point table."""
+        """Everything the registration needs besides the point table."""
+        if self.is_server:
+            return {**self.identity_fields(), 'cert_path': self.cert_path, 'key_path': self.key_path, 'ca_path': self.ca_path,
+                    'tls': self.tls, 'client_auth': self.client_auth, 'tls12_only': self.tls12_only, 'ciphers': list(self.ciphers),
+                    'poll_rate': self.poll_rate, 'primacy': self.primacy, 'client_lfdi': self.client_lfdi,
+                    'client_pin': self.client_pin, 'register_unknown_clients': self.register_unknown_clients,
+                    'immediate_control_duration': self.immediate_control_duration, 'state_dir': self.state_dir,
+                    'notify_tls_verify': self.notify_tls_verify, 'response_timeout': self.response_timeout,
+                    'description': self.description}
         return {**self.identity_fields(), 'dcap_path': self.dcap_path, 'key_path': self.key_path, 'ca_path': self.ca_path,
                 'tls_verify': self.tls_verify, 'tls12_only': self.tls12_only, 'ciphers': list(self.ciphers),
                 'pin': self.pin, 'register_if_missing': self.register_if_missing, 'device_category': self.device_category,

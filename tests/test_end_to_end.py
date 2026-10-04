@@ -1,5 +1,6 @@
-"""Runs the end-to-end harness (interface + proxy manager + proxy subprocess + the Go sep2server in Docker) in a
-subprocess. Needs Docker and three free local ports; skipped when Docker is unavailable or the image cannot be built.
+"""Runs the end-to-end harnesses in subprocesses: the client role against the Go sep2server in Docker (needs Docker and
+three free local ports; skipped when Docker is unavailable or the image cannot be built), and the server role served by
+the proxy to a client-role interface over mutual TLS on the loopback interface (needs nothing but two free ports).
 """
 import os
 import socket
@@ -14,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).with_name('e2e_sep2server')))
 import sep2server  # noqa: E402
 
 HARNESS = Path(__file__).with_name('e2e_sep2server') / 'harness.py'
+LOOPBACK_HARNESS = Path(__file__).with_name('e2e_loopback') / 'harness.py'
 EXPECTED_CHECKS = 16
+EXPECTED_LOOPBACK_CHECKS = 17
 
 
 def _free_port() -> int:
@@ -37,3 +40,15 @@ def test_end_to_end(tmp_path):
         report += '\n--- log ---\n' + log.read_text()[-6000:]
     assert proc.returncode == 0, report
     assert f'{EXPECTED_CHECKS}/{EXPECTED_CHECKS} passed' in proc.stdout, report
+
+
+def test_end_to_end_server_role(tmp_path):
+    """A served server and a DER client, both interfaces through one real proxy process, over mutual TLS."""
+    log = tmp_path / 'e2e_loopback.log'
+    proc = subprocess.run([sys.executable, str(LOOPBACK_HARNESS), str(_free_port()), str(_free_port()), str(tmp_path / 'work')],
+                          capture_output=True, text=True, timeout=400, env={**os.environ, 'SEP2_E2E_LOG': str(log)})
+    report = proc.stdout + proc.stderr
+    if proc.returncode != 0 and log.exists():
+        report += '\n--- log ---\n' + log.read_text()[-6000:]
+    assert proc.returncode == 0, report
+    assert f'{EXPECTED_LOOPBACK_CHECKS}/{EXPECTED_LOOPBACK_CHECKS} passed' in proc.stdout, report

@@ -52,7 +52,8 @@ vctl config store platform.driver devices/campus/building/der_sep2 example-confi
 
 | Key | Meaning |
 |---|---|
-| `server_url` (or `url`, `device_address`) | The server's base URL. `dcap_path` (`/dcap`) is the only path configured; every other href comes from the server's links. |
+| `driver_role` | `client` (the default) reaches the server below as a DER; `server` serves a CSIP server to DER clients, see [Server role](#server-role). |
+| `server_url` (or `url`, `device_address`) | The server's base URL (client role). `dcap_path` (`/dcap`) is the only path configured; every other href comes from the server's links. |
 | `cert_path`, `key_path`, `ca_path` | The device certificate, its key and the CA to verify the server. `tls_verify` (true) and `tls12_only` (true: IEEE 2030.5 mandates TLS 1.2 with `ECDHE-ECDSA-AES128-CCM8`, which the proxy offers first; `ciphers` overrides the list). |
 | `lfdi` | 40 hex digits; derived from the certificate when absent. One of `cert_path` or `lfdi` is required. |
 | `pin` | The registration PIN the server gave for this device; checked against `Registration.pIN` when set. |
@@ -104,6 +105,63 @@ device format for any device whose format reaches `2030.5` in the transform grap
 - Quantities are one engineering number per row; status enumerations one value; `connectStatus` and the hex-binary
   bitmaps (`modesEnabled`, `alarmStatus`) take an integer or hex string and read back as hex. Curves and
   `DERControlList` are list-valued points.
+
+## Server role
+
+With `"driver_role": "server"` the device *is* a CSIP server: the proxy listens on `bind_host:port` with the server
+certificate, the DER client described by `client_lfdi`/`client_pin` is pre-registered (other clients may register too
+unless `register_unknown_clients` is false), and the registry rows are the served points.
+
+```json
+{
+    "remote_config": {
+        "driver_type": "ieee2030_5",
+        "driver_role": "server",
+        "bind_host": "0.0.0.0",
+        "port": 7443,
+        "cert_path": "/etc/volttron/sep2/server.pem",
+        "key_path": "/etc/volttron/sep2/server.key",
+        "ca_path": "/etc/volttron/sep2/ca.pem",
+        "client_lfdi": "407FA71D59F3A360EB6AF1815834967AF67211DD",
+        "client_pin": 111115,
+        "poll_rate": 60,
+        "state_dir": "/var/lib/volttron/sep2"
+    },
+    "registry_config": "config://served.csv"
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `bind_host`, `port` | `0.0.0.0`, 7443 | The listener. One DriverAgent per listener. |
+| `cert_path`, `key_path`, `ca_path` | required | The server certificate and key; the CA that signed the clients' certificates (`client_auth`, true, verifies them). `tls: false` serves plain HTTP for testing. |
+| `client_lfdi`, `client_pin` | unset | The DER client whose reports map to the registry rows, pre-registered with this PIN. Without it the first client to register is that DER. |
+| `register_unknown_clients` | true | Let other DER clients create their EndDevice by POST. |
+| `poll_rate` | 60 | The `pollRate` advertised to clients. |
+| `primacy` | 1 | The served DERProgram's primacy. |
+| `immediate_control_duration` | 3600 | Seconds a `DERControl.*` write stays in force. |
+| `state_dir` | unset | Directory where the proxy keeps the served state (registrations, subscriptions, controls, curves, received values) across restarts; in memory only when unset. |
+
+The rows are the same paths with the directions mirrored, and default to `Data Source` `server` (never polled):
+
+* `DefaultDERControl.*`, `DERControl.*`, `DERControlList`, `DERCurve.<attribute>.*` and `DERProgram.*` are what the
+  platform writes (served controls). `set_point` stores the value in the served resource and reflects it into the
+  equipment tree at once; `Starting Value` seeds a control that holds nothing. A `DERControl.*` write creates one
+  immediate event (start now, duration `immediate_control_duration`) per `set_multiple_points` call, superseding the
+  previous one; `DERControlList` is written as the whole schedule, a list of `{mRID?, interval: {start, duration},
+  DERControl: {...}}` entries; a `DERCurve.<attribute>.CurveData` write serves a curve that controls setting that
+  attribute (to true, or to its href) link to.
+* `DERStatus.*`, `DERSettings.*`, `DERCapability.*`, `DERAvailability.*`, `DeviceInformation.*` and
+  `MirrorMeterReading.<unit>[.<phase>]` are what the DER client reports (`Remote Writable` by default); they arrive as
+  pushes and read back as the last value received. `DERControlList` reads back as the events with their status and the
+  DERControlResponses the client posted.
+* Clients subscribed to the control resources are notified of every platform write; others see it at their next poll.
+* Restarts: the proxy manager relaunches a crashed proxy and the interface registers again; the served state comes back
+  from `state_dir`, so clients stay registered and subscribed, and the equipment tree's current values seed anything the
+  state does not hold.
+
+`tests/e2e_loopback/` runs this role end to end: a served server and a client-role interface through one real proxy
+process over mutual TLS with generated certificates, no Docker needed.
 
 ## Testing
 
