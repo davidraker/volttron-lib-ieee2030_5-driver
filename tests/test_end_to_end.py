@@ -17,7 +17,7 @@ import sep2server  # noqa: E402
 HARNESS = Path(__file__).with_name('e2e_sep2server') / 'harness.py'
 LOOPBACK_HARNESS = Path(__file__).with_name('e2e_loopback') / 'harness.py'
 EXPECTED_CHECKS = 16
-EXPECTED_LOOPBACK_CHECKS = 17
+EXPECTED_LOOPBACK_CHECKS = 18
 
 
 def _free_port() -> int:
