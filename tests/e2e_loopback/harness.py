@@ -137,6 +137,10 @@ try:
 
     # A proxy crash: the manager relaunches it, both interfaces register again, and the served state comes back from
     # the state file rather than from the starting values.
+    # The served state is saved 0.5 s after a change and a crash cannot flush it, so wait for the control to be on disk.
+    state_file = Path(describe(server)['state_file'])
+    check('served state file holds the control before the crash',
+          wait_for(lambda: state_file.exists() and mrid in state_file.read_text(), 5))
     old_peer = server.proxy_peer
     old_peer.process.terminate()
     relaunched = wait_for(lambda: server.proxy_peer is not None and server.proxy_peer is not old_peer
