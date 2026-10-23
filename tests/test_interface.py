@@ -109,7 +109,7 @@ class TestSetup:
         ppm.queue(serialized({'client': 'https://sep2.test:8443|/certs/dev.pem', 'points': 11, 'lfdi': 'A' * 40, 'sfdi': 1}))
         interface = make_interface(STANDARD_POINTS)
         interface.finalize_setup(initial_setup=True)
-        assert ppm.launch == (('ieee2030_5',), {}) and ppm.registration_waits == [30.0]
+        assert ppm.launch == (('ieee2030_5',), {'persistent': True}) and ppm.registration_waits == [30.0]
         [(method, payload, expects_reply)] = ppm.sent
         assert method == 'REGISTER_REMOTE' and expects_reply
         assert payload['server_url'] == 'https://sep2.test:8443' and payload['cert_path'] == '/certs/dev.pem'
