@@ -282,6 +282,16 @@ class TestServerRole:
         assert Ieee2030_5PointConfig(**prepared[0]).writable is True
         assert iface.prepare_registry_config(rows, RemoteConfig(**REMOTE)) == rows
 
+    def test_prepare_registry_config_replaces_polling_sources_on_served_rows(self, make_interface):
+        iface = make_interface(**SERVED)
+        rows = [{'Volttron Point Name': 'lim', 'Path': 'DERControl.opModMaxLimW', 'Data Source': 'short_poll'},
+                {'Volttron Point Name': 'np', 'Path': 'DERCapability.rtgMaxW', 'data_source': 'poll_once'},
+                {'Volttron Point Name': 'st', 'Path': 'DERStatus.connectStatus', 'Data Source': 'never_poll'}]
+        prepared = iface.prepare_registry_config(rows, RemoteConfig(**SERVED))
+        assert [r['data_source'] for r in prepared[:2]] == ['server', 'server'] and all('Data Source' not in r for r in prepared[:2])
+        assert prepared[2] == rows[2]
+        assert [Ieee2030_5PointConfig(**r).is_served for r in prepared] == [True, True, False]
+
     def test_registration_payload_describes_the_served_server(self, make_interface, ppm):
         iface = make_interface(SERVED_POINTS, **SERVED)
         ppm.queue(serialized({'server': 'server|127.0.0.1:7443', 'points': 6, 'role': 'server', 'seeded': 0, 'port': 7443}))
