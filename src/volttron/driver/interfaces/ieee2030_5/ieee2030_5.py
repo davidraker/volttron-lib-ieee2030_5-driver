@@ -57,6 +57,7 @@ from volttron.driver.base.config import RemoteConfig
 from .config import DOWNWARD_RESOURCES, DriverRole, Ieee2030_5PointConfig, Ieee2030_5RemoteConfig, ROLE_ALIASES
 
 _log = logging.getLogger(__name__)
+_POLLED_SOURCES = {'short_poll', 'long_poll', 'poll_once', 'shortpoll', 'longpoll', 'pollonce'}
 
 TRUE_STRINGS = ('true', 't', 'on', 'yes', 'y', '1')
 FALSE_STRINGS = ('false', 'f', 'off', 'no', 'n', '0', '')
@@ -120,7 +121,11 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
 
     # ---- registers --------------------------------------------------------------------------------------------
     def prepare_registry_config(self, registry_config: list[dict], remote_config: RemoteConfig | None = None) -> list[dict]:
-        """In the server role, rows default to the ``server`` data source (and so to the mirrored direction)."""
+        """In the server role, rows take the ``server`` data source (and so the mirrored direction).
+
+        A blank source defaults to it; a polling source, which says how often a client reads a shared registry,
+        means nothing to a served point and is replaced. ``static`` and ``never_poll`` are kept.
+        """
         role = getattr(remote_config, 'driver_role', None) if remote_config is not None else self.config.driver_role
         role = getattr(role, 'value', role)
         if ROLE_ALIASES.get(role, role) != DriverRole.server.value:
@@ -128,7 +133,9 @@ class Ieee2030_5(ProxyBackedInterface, BasicRevert, BaseInterface):
         prepared = []
         for row in registry_config:
             row = dict(row)
-            if all(row.get(key) in (None, '') for key in ('data_source', 'Data Source')):
+            source = next((row[key] for key in ('data_source', 'Data Source') if row.get(key) not in (None, '')), None)
+            if source is None or str(getattr(source, 'value', source)).strip().lower() in _POLLED_SOURCES:
+                row.pop('Data Source', None)
                 row['data_source'] = 'server'
             prepared.append(row)
         return prepared
