@@ -195,60 +195,175 @@ class Ieee2030_5PointConfig(PointConfig):
 class Ieee2030_5RemoteConfig(RemoteConfig):
     """One remote: the 2030.5 server to reach with the client certificate that identifies this device to it (role
     ``client``), or the server to serve with its server certificate (role ``server``)."""
-    driver_role: DriverRole = DriverRole.client
+    driver_role: DriverRole = Field(default=DriverRole.client,
+                                    description='client reaches a 2030.5 server as a DER device; server serves one to '
+                                                'DER clients.',
+                                    json_schema_extra={'group': 'Device', 'order': 20})
     # Client role: the server to reach. Required in that role.
-    server_url: str | None = Field(default=None, validation_alias=AliasChoices('server_url', 'url', 'device_address', 'server'))
-    dcap_path: str = '/dcap'
+    server_url: str | None = Field(default=None,
+                                   validation_alias=AliasChoices('server_url', 'url', 'device_address', 'server'),
+                                   description='Client: the server to reach.',
+                                   json_schema_extra={'group': 'Connection',
+                                                      'show_when': {'driver_role': ['client', 'master']}, 'order': 10})
+    dcap_path: str = Field(default='/dcap', description='Path of the DeviceCapability resource on the server.',
+                           json_schema_extra={'group': 'Connection', 'advanced': True,
+                                              'show_when': {'driver_role': ['client', 'master']}, 'order': 20})
     # Server role: the listener, and the DER client whose data the registry describes.
-    bind_host: str = Field(default='0.0.0.0', validation_alias=AliasChoices('bind_host', 'listen_host'))
-    port: int = Field(default=7443, ge=0, validation_alias=AliasChoices('port', 'listen_port'))
-    tls: bool = True
-    client_auth: bool = True
-    client_lfdi: str | None = None
-    client_pin: int | None = None
-    register_unknown_clients: bool = True
+    bind_host: str = Field(default='0.0.0.0', validation_alias=AliasChoices('bind_host', 'listen_host'),
+                           description='Server: the interface to listen on.',
+                           json_schema_extra={'group': 'Connection',
+                                              'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                              'order': 30})
+    port: int = Field(default=7443, ge=0, validation_alias=AliasChoices('port', 'listen_port'),
+                      description='Server: the port to listen on.',
+                      json_schema_extra={'group': 'Connection',
+                                         'show_when': {'driver_role': ['server', 'slave', 'outstation']}, 'order': 40})
+    tls: bool = Field(default=True, description='Serve or connect over TLS.',
+                      json_schema_extra={'group': 'TLS', 'order': 50})
+    client_auth: bool = Field(default=True, description='Server: require clients to present a certificate.',
+                              json_schema_extra={'group': 'TLS', 'advanced': True,
+                                                 'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                 'order': 100})
+    client_lfdi: str | None = Field(default=None,
+                                    description='Server: the DER client whose data the registry describes.',
+                                    json_schema_extra={'group': 'Identity',
+                                                       'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                       'order': 190})
+    client_pin: int | None = Field(default=None,
+                                   json_schema_extra={'group': 'Identity',
+                                                      'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                      'order': 200})
+    register_unknown_clients: bool = Field(default=True,
+                                           json_schema_extra={'group': 'Identity', 'advanced': True,
+                                                              'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                              'order': 210})
     # pollRate advertised to clients, the served program's primacy, and how long a DERControl.* write stays in force.
-    poll_rate: int = Field(default=60, ge=1)
-    primacy: int = Field(default=1, ge=0)
-    immediate_control_duration: int = Field(default=3600, ge=1)
+    poll_rate: int = Field(default=60, ge=1, description='Server: pollRate advertised to clients.',
+                           json_schema_extra={'group': 'Polling',
+                                              'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                              'unit': 's', 'order': 260})
+    primacy: int = Field(default=1, ge=0, description="Server: the served program's primacy.",
+                         json_schema_extra={'group': 'Polling', 'advanced': True,
+                                            'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                            'order': 270})
+    immediate_control_duration: int = Field(default=3600, ge=1,
+                                            description='Server: how long a DERControl write stays in force.',
+                                            json_schema_extra={'group': 'Polling', 'advanced': True,
+                                                               'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                               'unit': 's', 'order': 280})
     # Directory where the proxy keeps the served state (registrations, subscriptions, controls); None keeps it in memory.
-    state_dir: str | None = None
-    notify_tls_verify: bool = False
-    cert_path: str | None = Field(default=None, validation_alias=AliasChoices('cert_path', 'certfile', 'cert'))
-    key_path: str | None = Field(default=None, validation_alias=AliasChoices('key_path', 'keyfile', 'key'))
-    ca_path: str | None = Field(default=None, validation_alias=AliasChoices('ca_path', 'cafile', 'ca'))
-    tls_verify: bool = True
-    tls12_only: bool = True
-    ciphers: list[str] = Field(default_factory=lambda: list(DEFAULT_CIPHERS))
+    state_dir: str | None = Field(default=None,
+                                  description='Server: where the proxy keeps registrations, subscriptions and '
+                                              'controls; blank keeps them in memory.',
+                                  json_schema_extra={'group': 'Proxy', 'advanced': True,
+                                                     'show_when': {'driver_role': ['server', 'slave', 'outstation']},
+                                                     'order': 360})
+    notify_tls_verify: bool = Field(default=False,
+                                    json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                       'show_when': {'driver_role': ['client', 'master']},
+                                                       'order': 330})
+    cert_path: str | None = Field(default=None, validation_alias=AliasChoices('cert_path', 'certfile', 'cert'),
+                                  description='Client: the device certificate that identifies it. Server: the server '
+                                              'certificate.',
+                                  json_schema_extra={'group': 'TLS', 'order': 60})
+    key_path: str | None = Field(default=None, validation_alias=AliasChoices('key_path', 'keyfile', 'key'),
+                                 json_schema_extra={'group': 'TLS', 'order': 70})
+    ca_path: str | None = Field(default=None, validation_alias=AliasChoices('ca_path', 'cafile', 'ca'),
+                                description='The CA that verifies the other side.',
+                                json_schema_extra={'group': 'TLS', 'order': 80})
+    tls_verify: bool = Field(default=True, json_schema_extra={'group': 'TLS', 'advanced': True, 'order': 90})
+    tls12_only: bool = Field(default=True, json_schema_extra={'group': 'TLS', 'advanced': True, 'order': 110})
+    ciphers: list[str] = Field(default_factory=lambda: list(DEFAULT_CIPHERS),
+                               json_schema_extra={'group': 'TLS', 'advanced': True, 'order': 120})
     # 40 hex digits; derived from the certificate when absent.
-    lfdi: str | None = None
-    pin: int | None = None
-    register_if_missing: bool = True
-    device_category: int = DEFAULT_DEVICE_CATEGORY
-    der_index: int = Field(default=0, ge=0)
-    description: str = 'VOLTTRON'
-    poll_rate_floor: float = Field(default=60.0, ge=0)
-    default_poll_rate: float = Field(default=1800.0, gt=0)
+    lfdi: str | None = Field(default=None,
+                             description='Client: 40 hex digits; derived from the certificate when absent.',
+                             json_schema_extra={'group': 'Identity', 'show_when': {'driver_role': ['client', 'master']},
+                                                'order': 130})
+    pin: int | None = Field(default=None, description='Client: registration PIN.',
+                            json_schema_extra={'group': 'Identity', 'show_when': {'driver_role': ['client', 'master']},
+                                               'order': 140})
+    register_if_missing: bool = Field(default=True,
+                                      json_schema_extra={'group': 'Identity', 'advanced': True,
+                                                         'show_when': {'driver_role': ['client', 'master']},
+                                                         'order': 150})
+    device_category: int = Field(default=DEFAULT_DEVICE_CATEGORY,
+                                 json_schema_extra={'group': 'Identity', 'advanced': True,
+                                                    'show_when': {'driver_role': ['client', 'master']}, 'order': 160})
+    der_index: int = Field(default=0, ge=0, description='Which DER of the end device this remote is.',
+                           json_schema_extra={'group': 'Identity', 'advanced': True,
+                                              'show_when': {'driver_role': ['client', 'master']}, 'order': 170})
+    description: str = Field(default='VOLTTRON',
+                             json_schema_extra={'group': 'Identity', 'advanced': True,
+                                                'show_when': {'driver_role': ['client', 'master']}, 'order': 180})
+    poll_rate_floor: float = Field(default=60.0, ge=0,
+                                   description='Client: never poll faster than this whatever the server advertises.',
+                                   json_schema_extra={'group': 'Polling', 'advanced': True,
+                                                      'show_when': {'driver_role': ['client', 'master']}, 'unit': 's',
+                                                      'order': 220})
+    default_poll_rate: float = Field(default=1800.0, gt=0,
+                                     description='Client: poll rate when the server advertises none.',
+                                     json_schema_extra={'group': 'Polling', 'advanced': True,
+                                                        'show_when': {'driver_role': ['client', 'master']}, 'unit': 's',
+                                                        'order': 230})
     # Caps the server's poll rate; None honours it. Mainly for test harnesses.
-    poll_rate_ceiling: float | None = Field(default=None, gt=0)
-    subscribe: bool = True
+    poll_rate_ceiling: float | None = Field(default=None, gt=0,
+                                            description="Client: caps the server's poll rate; blank honours it.",
+                                            json_schema_extra={'group': 'Polling', 'advanced': True,
+                                                               'show_when': {'driver_role': ['client', 'master']},
+                                                               'unit': 's', 'order': 240})
+    subscribe: bool = Field(default=True,
+                            description='Client: subscribe to server notifications instead of polling alone.',
+                            json_schema_extra={'group': 'Polling', 'show_when': {'driver_role': ['client', 'master']},
+                                               'order': 250})
     # The address the server reaches our notification receiver at; required for subscriptions.
-    notify_host: str | None = None
-    notify_port: int = Field(default=8443, ge=0)
-    notify_bind_host: str = '0.0.0.0'
-    notify_client_auth: bool = False
+    notify_host: str | None = Field(default=None,
+                                    description='The address the server reaches our notification receiver at; required '
+                                                'for subscriptions.',
+                                    json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                       'show_when': {'driver_role': ['client', 'master']},
+                                                       'order': 290})
+    notify_port: int = Field(default=8443, ge=0,
+                             json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                'show_when': {'driver_role': ['client', 'master']}, 'order': 300})
+    notify_bind_host: str = Field(default='0.0.0.0',
+                                  json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                     'show_when': {'driver_role': ['client', 'master']}, 'order': 310})
+    notify_client_auth: bool = Field(default=False,
+                                     json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                        'show_when': {'driver_role': ['client', 'master']},
+                                                        'order': 320})
     # Server-style certificate for the receiver when the device certificate is refused as one; defaults to the device's.
-    notify_cert_path: str | None = None
-    notify_key_path: str | None = None
+    notify_cert_path: str | None = Field(default=None,
+                                         description='Server-style certificate for the receiver when the device '
+                                                     'certificate is refused as one.',
+                                         json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                            'show_when': {'driver_role': ['client', 'master']},
+                                                            'order': 340})
+    notify_key_path: str | None = Field(default=None,
+                                        json_schema_extra={'group': 'Notifications', 'advanced': True,
+                                                           'show_when': {'driver_role': ['client', 'master']},
+                                                           'order': 350})
     # How long the proxy waits for the server to answer one request.
-    response_timeout: float = Field(default=10.0, gt=0)
+    response_timeout: float = Field(default=10.0, gt=0,
+                                    description='How long the proxy waits for the server to answer one request.',
+                                    json_schema_extra={'group': 'Proxy', 'advanced': True, 'unit': 's', 'order': 370})
     # How long this interface waits for the proxy's reply; defaults to three response timeouts, at least 30 s.
-    reply_timeout: float | None = Field(default=None, gt=0)
-    registration_timeout: float = Field(default=30.0, gt=0)
+    reply_timeout: float | None = Field(default=None, gt=0,
+                                        description="How long this interface waits for the proxy's reply; defaults to "
+                                                    'three response timeouts, at least 30 s.',
+                                        json_schema_extra={'group': 'Proxy', 'advanced': True, 'unit': 's',
+                                                           'order': 380})
+    registration_timeout: float = Field(default=30.0, gt=0,
+                                        json_schema_extra={'group': 'Proxy', 'advanced': True, 'unit': 's',
+                                                           'order': 390})
     persistent_connection: bool = Field(default=True, description='Keep one IPC connection to the proxy open for every'
-                                        ' request and push instead of one connection per message.')
+                                        ' request and push instead of one connection per message.',
+                                        json_schema_extra={'group': 'Proxy', 'advanced': True, 'order': 400})
     # All servers share one proxy process unless a group is named here.
-    proxy_group: str | None = None
+    proxy_group: str | None = Field(default=None,
+                                    description='All servers share one proxy process unless a group is named here.',
+                                    json_schema_extra={'group': 'Proxy', 'advanced': True, 'order': 410})
 
     @field_validator('device_category', mode='before')
     @classmethod
