@@ -1,4 +1,4 @@
-"""CSIP-style test certificates with the cryptography library: a CA, a server certificate for 127.0.0.1, a device
+"""CSIP-style test certificates made locally with the cryptography library (no Docker, unlike ``sep2server.generate_certs``): a CA, a server certificate for 127.0.0.1, a device
 certificate (the DER client's identity, hence its LFDI) and a server-style certificate for the client's notification
 receiver. Elliptic-curve P-256 keys, as IEEE 2030.5 mandates."""
 from __future__ import annotations
@@ -20,7 +20,7 @@ def _write(path: Path, cert, key):
     return path.with_suffix('.crt'), path.with_suffix('.key')
 
 
-def generate_certs(cert_dir: Path) -> dict[str, Path]:
+def generate_local_certs(cert_dir: Path) -> dict[str, Path]:
     cert_dir.mkdir(parents=True, exist_ok=True)
     now = datetime.datetime.now(datetime.timezone.utc)
     before, after = now - datetime.timedelta(days=1), now + datetime.timedelta(days=30)

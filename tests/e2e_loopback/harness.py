@@ -9,8 +9,7 @@ import gevent, json, logging, os, sys, tempfile, time
 from pathlib import Path
 logging.basicConfig(filename=os.environ.get('SEP2_E2E_LOG', '/tmp/sep2_loopback_e2e.log'), level=logging.DEBUG,
                     format='%(asctime)s %(name)s %(levelname)s %(message)s')
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from certs import generate_certs                                                      # noqa: E402
+from volttron.driver.interfaces.ieee2030_5.testing import generate_local_certs        # noqa: E402
 from protocol_proxy.protocol.ieee2030_5.identity import lfdi_from_cert                # noqa: E402
 from volttron.driver.base.config import RemoteConfig                                 # noqa: E402
 from volttron.driver.interfaces.ieee2030_5.ieee2030_5 import Ieee2030_5             # noqa: E402
@@ -18,7 +17,7 @@ from volttron.driver.interfaces.ieee2030_5.config import Ieee2030_5PointConfig  
 
 PORT, NOTIFY_PORT = (int(a) for a in sys.argv[1:3])
 WORK = Path(sys.argv[3]) if len(sys.argv) > 3 else Path(tempfile.mkdtemp(prefix='sep2loop-'))
-certs = generate_certs(WORK / 'tls')
+certs = generate_local_certs(WORK / 'tls')
 LFDI = lfdi_from_cert(certs['device_cert'])
 PIN = 111115
 
