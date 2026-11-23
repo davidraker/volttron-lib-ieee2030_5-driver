@@ -16,7 +16,7 @@ Environment: `SEP2SERVER_IMAGE` (default `sep2server:e2e`), `SEP2SERVER_REPO` (t
 `SEP2SERVER_SKIP_BUILD=1` to fail rather than build a missing image, `SEP2_E2E_KEEP=1` to leave the container running
 for inspection (`docker logs sep2e2e-<port>`), `SEP2_E2E_LOG` for the harness log file.
 
-What the Go server needs, learnt the hard way and encoded in `sep2server.py`:
+What the Go server needs, learnt the hard way and encoded in `volttron.driver.interfaces.ieee2030_5.testing` (`src/volttron/driver/interfaces/ieee2030_5/testing/sep2server.py`):
 
 * It speaks TLS 1.2 with `ECDHE-ECDSA-AES128-CCM8` only; OpenSSL 3 enables that suite only at `@SECLEVEL=0`, which
   the proxy's `make_ssl_context` sets whenever CCM-8 is requested.
@@ -30,5 +30,5 @@ What the Go server needs, learnt the hard way and encoded in `sep2server.py`:
 * The admin API needs `SEP2_PEN` to mint control mRIDs, `Authorization: Bearer <SEP2_ADMIN_KEY>`, and DERControls of
   at least 60 s starting in the future.
 
-`Dockerfile.e2e` is the upstream Dockerfile without the `go mod download` step, building from the repository's vendored
+`Dockerfile.e2e` (next to `sep2server.py` in the package) is the upstream Dockerfile without the `go mod download` step, building from the repository's vendored
 modules (`-mod=vendor`), which is what succeeds without module-proxy access.

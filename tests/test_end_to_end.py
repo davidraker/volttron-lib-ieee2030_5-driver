@@ -11,8 +11,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).with_name('e2e_sep2server')))
-import sep2server  # noqa: E402
+from volttron.driver.interfaces.ieee2030_5.testing import sep2server  # noqa: E402
 
 HARNESS = Path(__file__).with_name('e2e_sep2server') / 'harness.py'
 LOOPBACK_HARNESS = Path(__file__).with_name('e2e_loopback') / 'harness.py'

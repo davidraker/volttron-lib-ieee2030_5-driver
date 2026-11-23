@@ -46,7 +46,8 @@ def ensure_image(log=print) -> None:
         subprocess.run(['docker', 'build', '-q', '-f', 'Dockerfile.e2e', '-t', IMAGE, '.'], cwd=tmp, check=True)
 
 
-def _run_certs(cert_dir: Path, *args: str) -> str:
+def run_certs(cert_dir: Path, *args: str) -> str:
+    """Run one of the server image's ``certs`` sub-commands with ``cert_dir`` mounted at ``/tls``."""
     user = f'{os.getuid()}:{os.getgid()}'
     result = subprocess.run(['docker', 'run', '--rm', '-u', user, '-e', 'HOME=/tmp', '-v', f'{cert_dir}:/tls', IMAGE, 'certs', *args],
                             capture_output=True, text=True)
@@ -59,12 +60,12 @@ def generate_certs(cert_dir: Path) -> dict[str, Path]:
     """CA, server, device and a server-style receiver certificate. Returns the paths."""
     cert_dir.mkdir(parents=True, exist_ok=True)
     cert_dir.chmod(0o755)
-    _run_certs(cert_dir, 'generate-ca', '-out', '/tls')
-    _run_certs(cert_dir, 'generate-server', '-out', '/tls', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key', '-hosts', '127.0.0.1,localhost')
-    _run_certs(cert_dir, 'generate-device', '-out', '/tls', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key', '-name', 'volttron',
+    run_certs(cert_dir, 'generate-ca', '-out', '/tls')
+    run_certs(cert_dir, 'generate-server', '-out', '/tls', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key', '-hosts', '127.0.0.1,localhost')
+    run_certs(cert_dir, 'generate-device', '-out', '/tls', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key', '-name', 'volttron',
                '-hw-serial', 'VT0001', '-hw-type', f'1.3.6.1.4.1.{PEN}.1')
     (cert_dir / 'notify').mkdir(exist_ok=True)
-    _run_certs(cert_dir, 'generate-server', '-out', '/tls/notify', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key',
+    run_certs(cert_dir, 'generate-server', '-out', '/tls/notify', '-ca', '/tls/ca.crt', '-ca-key', '/tls/ca.key',
                '-hosts', '127.0.0.1,localhost', '-cn', 'VOLTTRON notify')
     for key in cert_dir.rglob('*.key'):
         key.chmod(0o644)                     # the server container runs as this user; the proxy reads the device key

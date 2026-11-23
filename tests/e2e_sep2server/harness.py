@@ -7,8 +7,7 @@ from gevent import monkey; monkey.patch_all()
 import gevent, json, logging, os, sys, tempfile, time
 from pathlib import Path
 logging.basicConfig(filename=os.environ.get('SEP2_E2E_LOG', '/tmp/sep2_e2e.log'), level=logging.DEBUG, format='%(asctime)s %(name)s %(levelname)s %(message)s')
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sep2server import Sep2Server, ensure_image, generate_certs, write_fixture      # noqa: E402
+from volttron.driver.interfaces.ieee2030_5.testing import Sep2Server, ensure_image, generate_certs, write_fixture  # noqa: E402
 from protocol_proxy.protocol.ieee2030_5.identity import lfdi_from_cert, sfdi_from_lfdi    # noqa: E402
 from volttron.driver.base.config import RemoteConfig                                 # noqa: E402
 from volttron.driver.interfaces.ieee2030_5.ieee2030_5 import Ieee2030_5             # noqa: E402
